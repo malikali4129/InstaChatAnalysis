@@ -37,26 +37,31 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadDefaultFiles() {
-  showLoadingScreen();
+  showLoadingScreen(FILE_NAMES.length);
   try {
-    const files = [];
+    const allMessages = [];
     for (let i = 0; i < FILE_NAMES.length; i++) {
       const name = FILE_NAMES[i];
+      updateLoadingProgress(i + 1, FILE_NAMES.length, `Fetching ${name}...`);
       const response = await fetch(name);
       if (!response.ok) throw new Error(`${name} returned ${response.status}`);
       const text = await response.text();
-      files.push({ name, text });
-      updateLoadingProgress(i + 1, FILE_NAMES.length);
+      await new Promise(r => setTimeout(r, 0));
+      updateLoadingProgress(i + 1, FILE_NAMES.length, `Parsing ${name}...`);
+      const messages = parseHtml(text, name);
+      await new Promise(r => setTimeout(r, 0));
+      updateLoadingProgress(i + 1, FILE_NAMES.length, `${name}: ${messages.length} messages`);
+      allMessages.push(...messages);
     }
     hideLoadingScreen();
-    processFiles(files);
+    finishProcess(allMessages);
   } catch (error) {
     hideLoadingScreen();
     els.status.textContent = "Auto-load was blocked or files were not found. Use Load HTML files and select message_1.html through message_32.html.";
   }
 }
 
-function showLoadingScreen() {
+function showLoadingScreen(total) {
   const existing = document.getElementById("loadingScreen");
   if (existing) existing.remove();
   document.querySelector("main").style.display = "none";
@@ -66,17 +71,26 @@ function showLoadingScreen() {
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <div class="loading-text">Loading messages...</div>
-      <div class="loading-progress"><div class="loading-progress-bar"><div class="loading-progress-fill" id="loadingProgressFill"></div></div><span id="loadingProgressText">0 / ${FILE_COUNT}</span></div>
+      <div class="loading-progress"><div class="loading-progress-bar"><div class="loading-progress-fill" id="loadingProgressFill"></div></div><span id="loadingProgressText">0 / ${total}</span></div>
+      <div class="loading-logs" id="loadingLogs"></div>
     </div>
   `;
   document.body.appendChild(loader);
 }
 
-function updateLoadingProgress(current, total) {
+function updateLoadingProgress(current, total, message) {
   const fill = document.getElementById("loadingProgressFill");
   const text = document.getElementById("loadingProgressText");
+  const logs = document.getElementById("loadingLogs");
   if (fill) fill.style.width = `${(current / total) * 100}%`;
   if (text) text.textContent = `${current} / ${total}`;
+  if (logs && message) {
+    const entry = document.createElement("div");
+    entry.className = "log-entry";
+    entry.textContent = `[${current}/${total}] ${message}`;
+    logs.appendChild(entry);
+    logs.scrollTop = logs.scrollHeight;
+  }
 }
 
 function hideLoadingScreen() {
@@ -86,15 +100,33 @@ function hideLoadingScreen() {
 }
 
 async function handleFileInput(event) {
-  const files = [...event.target.files].filter(file => file.name.endsWith(".html"));
-  const loaded = await Promise.all(files.map(async file => ({ name: file.name, text: await file.text() })));
-  processFiles(loaded);
+  const selectedFiles = [...event.target.files].filter(file => file.name.endsWith(".html"));
+  if (!selectedFiles.length) return;
+
+  showLoadingScreen(selectedFiles.length);
+  try {
+    const allMessages = [];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      updateLoadingProgress(i + 1, selectedFiles.length, `Reading ${file.name}...`);
+      const text = await file.text();
+      await new Promise(r => setTimeout(r, 0));
+      updateLoadingProgress(i + 1, selectedFiles.length, `Parsing ${file.name}...`);
+      const messages = parseHtml(text, file.name);
+      await new Promise(r => setTimeout(r, 0));
+      updateLoadingProgress(i + 1, selectedFiles.length, `${file.name}: ${messages.length} messages`);
+      allMessages.push(...messages);
+    }
+    hideLoadingScreen();
+    finishProcess(allMessages);
+  } catch (error) {
+    hideLoadingScreen();
+    els.status.textContent = `Error loading files: ${error.message}`;
+  }
 }
 
-function processFiles(files) {
-  allMessages = files
-    .sort((a, b) => messageNumber(a.name) - messageNumber(b.name))
-    .flatMap(file => parseHtml(file.text, file.name))
+function finishProcess(parsedMessages) {
+  allMessages = parsedMessages
     .filter(message => message.date instanceof Date && !Number.isNaN(message.date.valueOf()))
     .sort((a, b) => a.date - b.date);
 
@@ -103,8 +135,9 @@ function processFiles(files) {
     return;
   }
 
+  const fileCount = new Set(allMessages.map(m => m.fileName)).size;
   analysis = analyze(allMessages);
-  els.status.textContent = `Parsed ${formatNumber(allMessages.length)} messages from ${files.length} HTML files. Linked media is ignored visually and counted as references only.`;
+  els.status.textContent = `Parsed ${formatNumber(allMessages.length)} messages from ${fileCount} HTML files. Linked media is ignored visually and counted as references only.`;
   render();
 }
 
@@ -456,7 +489,7 @@ function formatDuration(minutes) {
 }
 function renderTags(target, rows) {
   target.innerHTML = rows.length
-    ? rows.map(([label, count]) => `<span class="tag">${escapeHtml(label)} <strong>${formatNumber(count)}</strong></span>`).join("")
+    ? rows.map(([label, count]) => `<span class="tag">${escapeHtml(label)}<strong>${formatNumber(count)}</strong></span>`).join("")
     : `<span class="tag">No data</span>`;
 }
 function escapeHtml(value) {
