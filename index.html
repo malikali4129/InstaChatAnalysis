@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instagram Chat Analysis</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Instagram export</p>
+      <h1>Chat Analysis</h1>
+    </div>
+    <div class="actions">
+      <label class="file-button">
+        <input id="fileInput" type="file" accept=".html,text/html" multiple>
+        Load HTML files
+      </label>
+      <button id="exportCsv" type="button">Export CSV</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="status" id="status">Load HTML files to analyze your Instagram chat export.</section>
+
+    <section class="summary-grid" id="summaryGrid"></section>
+
+    <section class="panel split">
+      <div>
+        <div class="section-heading">
+          <h2>Message Volume</h2>
+          <span id="rangeLabel"></span>
+        </div>
+        <canvas id="dailyChart" height="180"></canvas>
+      </div>
+      <div>
+        <div class="section-heading">
+          <h2>Participants</h2>
+          <span>share and writing style</span>
+        </div>
+        <div id="participants"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Activity Timing</h2>
+        <span>hour, weekday, and month</span>
+      </div>
+      <div class="timing-grid">
+        <div>
+          <h3>Most Active Hours</h3>
+          <canvas id="hourChart" height="170"></canvas>
+        </div>
+        <div>
+          <h3>Weekdays</h3>
+          <canvas id="weekdayChart" height="170"></canvas>
+        </div>
+        <div>
+          <h3>Monthly Trend</h3>
+          <canvas id="monthChart" height="170"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel split">
+      <div>
+        <div class="section-heading">
+          <h2>Conversation Rhythm</h2>
+          <span>sessions, streaks, and replies</span>
+        </div>
+        <div class="metric-list" id="rhythm"></div>
+      </div>
+      <div>
+        <div class="section-heading">
+          <h2>Content Mix</h2>
+          <span>text, media references, reactions</span>
+        </div>
+        <div id="contentMix"></div>
+      </div>
+    </section>
+
+    <section class="panel split">
+      <div>
+        <div class="section-heading">
+          <h2>Top Words</h2>
+          <span>common terms, filtered</span>
+        </div>
+        <div class="tags" id="topWords"></div>
+      </div>
+      <div>
+        <div class="section-heading">
+          <h2>Top Emojis</h2>
+          <span>most repeated symbols</span>
+        </div>
+        <div class="tags" id="topEmojis"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Message Explorer</h2>
+        <span id="explorerCount"></span>
+      </div>
+      <div class="filters">
+        <input id="searchBox" type="search" placeholder="Search messages, links, sender...">
+        <select id="senderFilter"></select>
+        <select id="typeFilter">
+          <option value="all">All types</option>
+          <option value="text">Text</option>
+          <option value="attachment">Attachments</option>
+          <option value="reaction">Reactions</option>
+          <option value="link">Links</option>
+        </select>
+      </div>
+      <div class="messages" id="messages"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
