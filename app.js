@@ -1,6 +1,6 @@
 const FILE_COUNT = 32;
 const FILE_NAMES = Array.from({ length: FILE_COUNT }, (_, i) => `message_${i + 1}.html`);
-const COLORS = ["#2563eb", "#0f8a67", "#b86b00", "#c2415d", "#6b7280"];
+const COLORS = ["#2563eb", "#0f8a67", "#b86b00", "#c2415d", "#7c3aed"];
 const STOP_WORDS = new Set([
   "the", "and", "you", "your", "for", "with", "that", "this", "hai", "hain", "tha", "thi", "kya", "nhi",
   "naw", "hn", "ha", "me", "to", "ko", "ki", "ka", "kr", "kro", "kru", "ap", "baby", "acha", "achaw",
@@ -11,35 +11,125 @@ let allMessages = [];
 let analysis = null;
 
 const els = {
-  status: document.getElementById("status"),
+  statusText: document.getElementById("statusText"),
   fileInput: document.getElementById("fileInput"),
   exportCsv: document.getElementById("exportCsv"),
-  summaryGrid: document.getElementById("summaryGrid"),
+  pageTitle: document.getElementById("pageTitle"),
+  pageSubtitle: document.getElementById("pageSubtitle"),
+  // stat boxes
+  statTotal: document.getElementById("statTotal"),
+  statDays: document.getElementById("statDays"),
+  statPerDay: document.getElementById("statPerDay"),
+  statWords: document.getElementById("statWords"),
+  statPeople: document.getElementById("statPeople"),
+  statSessions: document.getElementById("statSessions"),
+  // overview
   rangeLabel: document.getElementById("rangeLabel"),
-  participants: document.getElementById("participants"),
-  rhythm: document.getElementById("rhythm"),
-  contentMix: document.getElementById("contentMix"),
+  quickStats: document.getElementById("quickStats"),
+  participantsBars: document.getElementById("participantsBars"),
+  contentBars: document.getElementById("contentBars"),
   topWords: document.getElementById("topWords"),
   topEmojis: document.getElementById("topEmojis"),
+  // explorer
   messages: document.getElementById("messages"),
   explorerCount: document.getElementById("explorerCount"),
   searchBox: document.getElementById("searchBox"),
   senderFilter: document.getElementById("senderFilter"),
   typeFilter: document.getElementById("typeFilter"),
+  // participants
+  participantsList: document.getElementById("participantsList"),
+  rhythmList: document.getElementById("rhythmList"),
+  // content
+  contentFullList: document.getElementById("contentFullList"),
+  emojiChart: document.getElementById("emojiChart"),
+  wordCloud: document.getElementById("wordCloud"),
+  // tooltip
+  tooltip: document.getElementById("tooltip"),
+  // theme
+  themeToggle: document.getElementById("themeToggle"),
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Tab navigation
+  document.querySelectorAll(".nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      document.getElementById(`tab-${tab}`).classList.add("active");
+      els.pageTitle.textContent = btn.querySelector("span")?.textContent || tab;
+      els.pageSubtitle.textContent = {
+        overview: "Key insights from your chat",
+        participants: "Who talks the most",
+        timing: "When you're most active",
+        content: "What you're sharing",
+        explorer: "Browse all messages",
+      }[tab] || "";
+    });
+  });
+
   els.fileInput.addEventListener("change", handleFileInput);
   els.searchBox.addEventListener("input", renderExplorer);
   els.senderFilter.addEventListener("change", renderExplorer);
   els.typeFilter.addEventListener("change", renderExplorer);
   els.exportCsv.addEventListener("click", exportCsv);
+
+  // Dark mode
+  els.themeToggle.addEventListener("change", () => {
+    document.documentElement.classList.toggle("dark", els.themeToggle.checked);
+  });
+
+  // Tooltip system
+  document.addEventListener("mouseover", e => {
+    const el = e.target.closest("[data-tooltip]");
+    if (!el) return;
+    els.tooltip.textContent = el.dataset.tooltip;
+    els.tooltip.classList.add("visible");
+    positionTooltip(el);
+  });
+  document.addEventListener("mouseout", e => {
+    if (e.target.closest("[data-tooltip]")) {
+      els.tooltip.classList.remove("visible");
+    }
+  });
+  document.addEventListener("mousemove", e => {
+    if (els.tooltip.classList.contains("visible")) {
+      positionTooltipAt(e.clientX + 14, e.clientY + 10);
+    }
+  });
+
+  // View toggle
+  document.querySelectorAll(".view-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".view-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  // Auto-load default files
+  loadDefaultFiles();
 });
+
+function positionTooltip(el) {
+  const rect = el.getBoundingClientRect();
+  const tRect = els.tooltip.getBoundingClientRect();
+  let x = rect.right + 14;
+  let y = rect.top;
+  if (x + 220 > window.innerWidth) x = rect.left - 220;
+  if (y + tRect.height > window.innerHeight) y = window.innerHeight - tRect.height - 10;
+  positionTooltipAt(x, y);
+}
+
+function positionTooltipAt(x, y) {
+  els.tooltip.style.left = `${x}px`;
+  els.tooltip.style.top = `${y}px`;
+}
 
 async function loadDefaultFiles() {
   showLoadingScreen(FILE_NAMES.length);
   try {
-    const allMessages = [];
+    const allMsgs = [];
     for (let i = 0; i < FILE_NAMES.length; i++) {
       const name = FILE_NAMES[i];
       updateLoadingProgress(i + 1, FILE_NAMES.length, `Fetching ${name}...`);
@@ -48,30 +138,33 @@ async function loadDefaultFiles() {
       const text = await response.text();
       await new Promise(r => setTimeout(r, 0));
       updateLoadingProgress(i + 1, FILE_NAMES.length, `Parsing ${name}...`);
-      const messages = parseHtml(text, name);
+      const msgs = parseHtml(text, name);
       await new Promise(r => setTimeout(r, 0));
-      updateLoadingProgress(i + 1, FILE_NAMES.length, `${name}: ${messages.length} messages`);
-      allMessages.push(...messages);
+      updateLoadingProgress(i + 1, FILE_NAMES.length, `${name}: ${msgs.length} messages`);
+      allMsgs.push(...msgs);
     }
     hideLoadingScreen();
-    finishProcess(allMessages);
+    finishProcess(allMsgs);
   } catch (error) {
     hideLoadingScreen();
-    els.status.textContent = "Auto-load was blocked or files were not found. Use Load HTML files and select message_1.html through message_32.html.";
+    els.statusText.textContent = "Auto-load blocked or files not found. Use Load Files and select message_1.html through message_32.html.";
   }
 }
 
 function showLoadingScreen(total) {
   const existing = document.getElementById("loadingScreen");
   if (existing) existing.remove();
-  document.querySelector("main").style.display = "none";
   const loader = document.createElement("div");
   loader.id = "loadingScreen";
   loader.innerHTML = `
     <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Loading messages...</div>
-      <div class="loading-progress"><div class="loading-progress-bar"><div class="loading-progress-fill" id="loadingProgressFill"></div></div><span id="loadingProgressText">0 / ${total}</span></div>
+      <div class="loading-title">Loading Messages...</div>
+      <div class="loading-progress">
+        <div class="loading-progress-bar">
+          <div class="loading-progress-fill" id="loadingProgressFill"></div>
+        </div>
+        <span id="loadingProgressText">0 / ${total}</span>
+      </div>
       <div class="loading-logs" id="loadingLogs"></div>
     </div>
   `;
@@ -96,7 +189,6 @@ function updateLoadingProgress(current, total, message) {
 function hideLoadingScreen() {
   const loader = document.getElementById("loadingScreen");
   if (loader) loader.remove();
-  document.querySelector("main").style.display = "";
 }
 
 async function handleFileInput(event) {
@@ -105,23 +197,23 @@ async function handleFileInput(event) {
 
   showLoadingScreen(selectedFiles.length);
   try {
-    const allMessages = [];
+    const allMsgs = [];
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
       updateLoadingProgress(i + 1, selectedFiles.length, `Reading ${file.name}...`);
       const text = await file.text();
       await new Promise(r => setTimeout(r, 0));
       updateLoadingProgress(i + 1, selectedFiles.length, `Parsing ${file.name}...`);
-      const messages = parseHtml(text, file.name);
+      const msgs = parseHtml(text, file.name);
       await new Promise(r => setTimeout(r, 0));
-      updateLoadingProgress(i + 1, selectedFiles.length, `${file.name}: ${messages.length} messages`);
-      allMessages.push(...messages);
+      updateLoadingProgress(i + 1, selectedFiles.length, `${file.name}: ${msgs.length} messages`);
+      allMsgs.push(...msgs);
     }
     hideLoadingScreen();
-    finishProcess(allMessages);
+    finishProcess(allMsgs);
   } catch (error) {
     hideLoadingScreen();
-    els.status.textContent = `Error loading files: ${error.message}`;
+    els.statusText.textContent = `Error loading files: ${error.message}`;
   }
 }
 
@@ -131,13 +223,13 @@ function finishProcess(parsedMessages) {
     .sort((a, b) => a.date - b.date);
 
   if (!allMessages.length) {
-    els.status.textContent = "No messages were parsed. Check that the selected files are Instagram message HTML exports.";
+    els.statusText.textContent = "No messages parsed. Check that files are Instagram message HTML exports.";
     return;
   }
 
   const fileCount = new Set(allMessages.map(m => m.fileName)).size;
   analysis = analyze(allMessages);
-  els.status.textContent = `Parsed ${formatNumber(allMessages.length)} messages from ${fileCount} HTML files. Linked media is ignored visually and counted as references only.`;
+  els.statusText.textContent = `Parsed ${formatNumber(allMessages.length)} messages from ${fileCount} HTML files.`;
   render();
 }
 
@@ -208,6 +300,7 @@ function analyze(messages) {
     attachments: rows.filter(m => m.type === "attachment").length,
     reactions: rows.filter(m => m.type === "reaction").length,
     questions: rows.filter(m => m.hasQuestion).length,
+    exclamations: rows.filter(m => m.hasExclamation).length,
     color: COLORS[i % COLORS.length],
   })).sort((a, b) => b.count - a.count);
 
@@ -285,112 +378,200 @@ function analyze(messages) {
 }
 
 function render() {
-  renderSummary();
-  renderParticipants();
-  renderRhythm();
-  renderContentMix();
+  renderOverviewStats();
+  renderQuickStats();
+  renderParticipantsBars();
+  renderContentBars();
   renderTags(els.topWords, analysis.topWords);
   renderTags(els.topEmojis, analysis.topEmojis);
+  renderParticipantsFull();
+  renderRhythm();
+  renderContentFull();
+  renderEmojiChart();
+  renderWordCloud();
   setupFilters();
   renderExplorer();
   drawCharts();
 }
 
-function renderSummary() {
-  const stats = [
-    ["Total messages", formatNumber(analysis.total), `${formatNumber(analysis.textMessages)} with readable text`],
-    ["Date range", `${analysis.days} days`, `${shortDate(analysis.first.date)} to ${shortDate(analysis.last.date)}`],
-    ["Avg per day", oneDecimal(analysis.avgPerDay), "messages/day"],
-    ["Total words", formatNumber(analysis.totalWords), `${oneDecimal(analysis.totalWords / analysis.total)} words/message`],
-    ["Most active hour", `${analysis.mostActiveHour?.[0] || "--"}:00`, `${formatNumber(analysis.mostActiveHour?.[1] || 0)} messages`],
-    ["Top day", analysis.topDays[0]?.[0] || "--", `${formatNumber(analysis.topDays[0]?.[1] || 0)} messages`],
-  ];
-  els.summaryGrid.innerHTML = stats.map(([label, value, note]) => `
-    <article class="stat">
-      <div class="label">${escapeHtml(label)}</div>
-      <div class="value">${escapeHtml(value)}</div>
-      <div class="note">${escapeHtml(note)}</div>
-    </article>
-  `).join("");
-  els.rangeLabel.textContent = `${shortDate(analysis.first.date)} - ${shortDate(analysis.last.date)}`;
+function renderOverviewStats() {
+  els.statTotal.textContent = formatNumber(analysis.total);
+  els.statDays.textContent = formatNumber(analysis.days);
+  els.statPerDay.textContent = oneDecimal(analysis.avgPerDay);
+  els.statWords.textContent = formatNumber(analysis.totalWords);
+  els.statPeople.textContent = formatNumber(analysis.perSender.length);
+  els.statSessions.textContent = formatNumber(analysis.sessions.length);
+  els.rangeLabel.textContent = `${shortDate(analysis.first.date)} — ${shortDate(analysis.last.date)}`;
 }
 
-function renderParticipants() {
-  els.participants.innerHTML = analysis.perSender.map(p => `
-    <div class="person-row">
-      <div class="row-top"><span>${escapeHtml(p.sender)}</span><span>${formatNumber(p.count)}</span></div>
-      <div class="row-sub">${oneDecimal(p.share * 100)}% share, ${formatNumber(p.words)} words, ${oneDecimal(p.avgWords)} avg words/msg, ${formatNumber(p.questions)} questions</div>
-      <div class="bar"><span style="width:${p.share * 100}%;background:${p.color}"></span></div>
+function renderQuickStats() {
+  const items = [
+    { label: "Busiest Day", value: analysis.topDays[0]?.[0] || "—", sub: `${formatNumber(analysis.topDays[0]?.[1] || 0)} messages` },
+    { label: "Peak Hour", value: analysis.mostActiveHour?.[0] ? `${analysis.mostActiveHour[0]}:00` : "—", sub: `${formatNumber(analysis.mostActiveHour?.[1] || 0)} messages` },
+    { label: "Text Share", value: `${oneDecimal((analysis.content.text / analysis.total) * 100)}%`, sub: `${formatNumber(analysis.content.text)} text msgs` },
+    { label: "Media Share", value: `${oneDecimal((analysis.content.attachment / analysis.total) * 100)}%`, sub: `${formatNumber(analysis.content.attachment)} attachments` },
+  ];
+  els.quickStats.innerHTML = items.map(item => `
+    <div class="quick-stat-item">
+      <div class="quick-stat-row">
+        <span class="quick-stat-label">${escapeHtml(item.label)}</span>
+        <span class="quick-stat-value">${escapeHtml(item.value)}</span>
+      </div>
+      <div class="quick-stat-sub">${escapeHtml(item.sub)}</div>
     </div>
   `).join("");
+}
+
+function renderParticipantsBars() {
+  const top = analysis.perSender.slice(0, 6);
+  els.participantsBars.innerHTML = top.map(p => `
+    <div class="participant-bar">
+      <div class="bar-label-row">
+        <span class="bar-label">${escapeHtml(p.sender)}</span>
+        <span class="bar-count">${formatNumber(p.count)}</span>
+      </div>
+      <div class="bar-track"><span style="width:${p.share * 100}%;background:${p.color}"></span></div>
+    </div>
+  `).join("");
+}
+
+function renderContentBars() {
+  const items = [
+    { label: "Text", count: analysis.content.text, color: "#2563eb" },
+    { label: "Photos/Videos", count: analysis.content.attachment, color: "#0f8a67" },
+    { label: "Reactions", count: analysis.content.reaction, color: "#b86b00" },
+    { label: "Links", count: analysis.content.link, color: "#c2415d" },
+  ];
+  const max = Math.max(...items.map(i => i.count), 1);
+  els.contentBars.innerHTML = items.map(item => `
+    <div class="content-bar">
+      <div class="bar-label-row">
+        <span class="bar-label">${escapeHtml(item.label)}</span>
+        <span class="bar-count">${formatNumber(item.count)}</span>
+      </div>
+      <div class="bar-track"><span style="width:${(item.count / max) * 100}%;background:${item.color}"></span></div>
+    </div>
+  `).join("");
+}
+
+function renderParticipantsFull() {
+  els.participantsList.innerHTML = analysis.perSender.map((p, i) => {
+    const bg = p.color;
+    const initial = p.sender.charAt(0).toUpperCase();
+    return `
+      <div class="participant-row">
+        <div class="participant-avatar" style="background:${bg}">${escapeHtml(initial)}</div>
+        <div class="participant-info">
+          <div class="participant-name">${escapeHtml(p.sender)}</div>
+          <div class="participant-sub">${oneDecimal(p.share * 100)}% of messages · ${formatNumber(p.words)} words total · ${oneDecimal(p.avgWords)} avg words/msg</div>
+        </div>
+        <div class="participant-stats">
+          <div class="pstat"><div class="pstat-val">${formatNumber(p.count)}</div><div class="pstat-lbl">Messages</div></div>
+          <div class="pstat"><div class="pstat-val">${formatNumber(p.questions)}</div><div class="pstat-lbl">Questions</div></div>
+          <div class="pstat"><div class="pstat-val">${formatNumber(p.exclamations)}</div><div class="pstat-lbl">Exclams</div></div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 function renderRhythm() {
   const longest = analysis.longestSession;
   const gap = analysis.longestGap;
-  const responses = analysis.responseBySender
-    .map(r => `${escapeHtml(r.sender)}: ${formatDuration(r.median)} median`)
-    .join("<br>");
-  const rows = [
-    ["Conversation sessions", formatNumber(analysis.sessions.length), "A new session starts after 30 quiet minutes."],
-    ["Longest session", `${formatNumber(longest.count)} messages`, `${shortDateTime(longest.start)} for ${formatDuration(longest.minutes)}`],
-    ["Longest quiet gap", formatDuration(gap.minutes), `${shortDateTime(gap.from.date)} to ${shortDateTime(gap.to.date)}`],
-    ["Reply time by sender", "", responses || "Not enough alternating replies."],
+  const items = [
+    { label: "Sessions", value: formatNumber(analysis.sessions.length), sub: "30+ min gaps define sessions" },
+    { label: "Longest Session", value: formatNumber(longest.count), sub: `${shortDateTime(longest.start)} · ${formatDuration(longest.minutes)}` },
+    { label: "Longest Gap", value: formatDuration(gap.minutes), sub: `${shortDateTime(gap.from.date)} → ${shortDateTime(gap.to.date)}` },
   ];
-  els.rhythm.innerHTML = rows.map(([label, value, note]) => `
-    <div class="metric-row">
-      <div class="row-top"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>
-      <div class="row-sub">${note}</div>
+  els.rhythmList.innerHTML = items.map(item => `
+    <div class="rhythm-item">
+      <div class="rhythm-label">${escapeHtml(item.label)}</div>
+      <div class="rhythm-value">${escapeHtml(item.value)}</div>
+      <div class="rhythm-sub">${escapeHtml(item.sub)}</div>
     </div>
   `).join("");
 }
 
-function renderContentMix() {
-  const rows = [
-    ["Text messages", analysis.content.text],
-    ["Attachments", analysis.content.attachment],
-    ["Reaction messages", analysis.content.reaction],
-    ["Messages with links", analysis.content.link],
-    ["Referenced images/videos", analysis.content.mediaRefs],
-    ["Linked URLs", analysis.content.links],
-    ["Quoted reaction refs", analysis.content.reactionRefs],
-    ["Question-like messages", analysis.content.questions],
-    ["Empty/media-only bodies", analysis.content.empty],
+function renderContentFull() {
+  const items = [
+    { label: "Text Messages", count: analysis.content.text, color: "#2563eb", bg: "#eff6ff" },
+    { label: "Photos & Videos", count: analysis.content.attachment, color: "#0f8a67", bg: "#ecfdf5" },
+    { label: "Reactions", count: analysis.content.reaction, color: "#b86b00", bg: "#fffbeb" },
+    { label: "Links Shared", count: analysis.content.link, color: "#c2415d", bg: "#fff1f3" },
+    { label: "Questions Asked", count: analysis.content.questions, color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Exclamations", count: analysis.content.exclamations, color: "#0f8a67", bg: "#ecfdf5" },
   ];
-  const max = Math.max(...rows.map(row => row[1]), 1);
-  els.contentMix.innerHTML = rows.map(([label, value], i) => `
-    <div class="mix-row">
-      <div class="row-top"><span>${escapeHtml(label)}</span><span>${formatNumber(value)}</span></div>
-      <div class="bar"><span style="width:${(value / max) * 100}%;background:${COLORS[i % COLORS.length]}"></span></div>
+  els.contentFullList.innerHTML = items.map(item => `
+    <div class="content-item">
+      <div class="content-item-left">
+        <span class="content-badge" style="background:${item.bg};color:${item.color}">${escapeHtml(item.label)}</span>
+      </div>
+      <strong>${formatNumber(item.count)}</strong>
     </div>
   `).join("");
+}
+
+function renderEmojiChart() {
+  els.emojiChart.innerHTML = analysis.topEmojis.slice(0, 20).map(([emoji, count]) => `
+    <span class="emoji-chip">${escapeHtml(emoji)}<strong>${formatNumber(count)}</strong></span>
+  `).join("");
+}
+
+function renderWordCloud() {
+  const words = analysis.topWords.slice(0, 40);
+  if (!words.length) {
+    els.wordCloud.innerHTML = '<span class="tag">No word data</span>';
+    return;
+  }
+  const max = words[0][1];
+  els.wordCloud.innerHTML = words.map(([word, count]) => {
+    const size = 12 + (count / max) * 20;
+    return `<span class="tag" style="font-size:${size}px;font-weight:700">${escapeHtml(word)}</span>`;
+  }).join(" ");
 }
 
 function setupFilters() {
   const options = ["all", ...analysis.perSender.map(p => p.sender)];
-  els.senderFilter.innerHTML = options.map(sender => `<option value="${escapeHtml(sender)}">${sender === "all" ? "All senders" : escapeHtml(sender)}</option>`).join("");
+  els.senderFilter.innerHTML = options.map(sender => `<option value="${escapeHtml(sender)}">${sender === "all" ? "All People" : escapeHtml(sender)}</option>`).join("");
 }
 
 function renderExplorer() {
   const query = els.searchBox.value.trim().toLowerCase();
   const sender = els.senderFilter.value;
   const type = els.typeFilter.value;
+  const compact = document.querySelector(".view-btn.active")?.dataset.view === "compact";
   const rows = allMessages.filter(m => {
     if (sender !== "all" && m.sender !== sender) return false;
     if (type !== "all" && m.type !== type) return false;
     if (!query) return true;
     return `${m.sender} ${m.text} ${m.dateText} ${m.type}`.toLowerCase().includes(query);
   }).slice(-300).reverse();
-  els.explorerCount.textContent = `showing ${formatNumber(rows.length)} of ${formatNumber(allMessages.length)}`;
-  els.messages.innerHTML = rows.map(m => `
-    <article class="message">
-      <div class="message-meta">
-        <strong>${escapeHtml(m.sender)}</strong>
-        <span>${escapeHtml(shortDateTime(m.date))} · ${escapeHtml(m.type)} · ${escapeHtml(m.fileName)}</span>
+  els.explorerCount.textContent = `${formatNumber(rows.length)} messages`;
+
+  // Determine who is "mine" (the person with most messages, likely the viewer)
+  const senderCounts = {};
+  allMessages.forEach(m => { senderCounts[m.sender] = (senderCounts[m.sender] || 0) + 1; });
+  const mineSender = Object.entries(senderCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+
+  els.messages.className = `messages chat-bubbles${compact ? " compact" : ""}`;
+  els.messages.innerHTML = rows.map(m => {
+    const isMine = m.sender === mineSender;
+    const color = analysis.perSender.find(p => p.sender === m.sender)?.color || "#2563eb";
+    const initial = m.sender.charAt(0).toUpperCase();
+    return `
+      <div class="bubble-row${isMine ? " mine" : ""}">
+        <div class="bubble-avatar" style="background:${color}">${escapeHtml(initial)}</div>
+        <div class="bubble-wrap">
+          ${!compact && !isMine ? `<div class="bubble-sender">${escapeHtml(m.sender)}</div>` : ""}
+          <div class="bubble">${escapeHtml(m.text || (m.type === "attachment" ? "[Photo/Video]" : m.type === "reaction" ? "[Reaction]" : m.type === "link" ? "[Link]" : ""))}</div>
+          <div class="bubble-meta">
+            <span class="bubble-time">${escapeHtml(shortDateTime(m.date))}</span>
+            <span class="bubble-type">${escapeHtml(m.type)}</span>
+          </div>
+        </div>
       </div>
-      <div class="message-text">${escapeHtml(m.text || "[media-only or empty message]")}</div>
-    </article>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function drawCharts() {
@@ -402,6 +583,7 @@ function drawCharts() {
 
 function drawBarChart(id, data, options = {}) {
   const canvas = document.getElementById(id);
+  if (!canvas) return;
   const ctx = canvas.getContext("2d");
   const ratio = window.devicePixelRatio || 1;
   const width = canvas.clientWidth || canvas.parentElement.clientWidth;
@@ -414,8 +596,8 @@ function drawBarChart(id, data, options = {}) {
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
   const max = Math.max(...data.map(d => d[1]), 1);
-  ctx.strokeStyle = "#dfe4ea";
-  ctx.fillStyle = "#657184";
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.fillStyle = "#64748b";
   ctx.font = "12px system-ui";
   for (let i = 0; i <= 4; i++) {
     const y = pad.top + chartH - (chartH * i / 4);
@@ -428,12 +610,12 @@ function drawBarChart(id, data, options = {}) {
   const gap = Math.min(5, chartW / data.length * .35);
   const barW = Math.max(2, (chartW - gap * (data.length - 1)) / data.length);
   ctx.fillStyle = options.color || "#2563eb";
-  data.forEach(([label, value], i) => {
+  data.forEach(([, value], i) => {
     const x = pad.left + i * (barW + gap);
     const h = chartH * (value / max);
     ctx.fillRect(x, pad.top + chartH - h, barW, h);
   });
-  ctx.fillStyle = "#657184";
+  ctx.fillStyle = "#64748b";
   const step = Math.max(1, Math.ceil(data.length / (options.maxLabels || 12)));
   data.forEach(([label], i) => {
     if (i % step !== 0 && i !== data.length - 1) return;
@@ -459,7 +641,6 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-function messageNumber(name) { return Number(name.match(/message_(\d+)/)?.[1] || 0); }
 function parseInstagramDate(value) { return new Date(value.replace(/\u202f/g, " ")); }
 function clean(value) { return value.replace(/\s+/g, " ").trim(); }
 function words(text) { return (text.toLowerCase().match(/[a-z0-9_]+/gi) || []).map(w => w.toLowerCase()); }
